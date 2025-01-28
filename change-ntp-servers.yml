@@ -1,0 +1,34 @@
+---
+- name: Change NTP Servers and Upload Results
+  hosts: all
+  gather_facts: yes  # To capture the device hostname
+  tasks:
+
+    - name: Lock database override
+      command: clish -c "lock database override"
+
+    - name: Set NTP server
+      command: clish -c "set ntp server primary prod-ntp-anycast.fanniemae.com version 1"
+
+    - name: Save configuration
+      command: clish -c "save config"
+
+    - name: Show NTP servers
+      command: clish -c "show ntp servers"
+      register: ntp_output
+
+    - name: Save NTP server output to CSV file
+      lineinfile:
+        path: "/tmp/ntp_output.csv"
+        line: "{{ ansible_hostname }},{{ ntp_output.stdout }}"
+        create: yes
+        state: present
+
+    - name: Upload CSV file to SharePoint
+      uri:
+        url: "https://your-sharepoint-site.com/path/to/upload"
+        method: POST
+        headers:
+          Content-Type: "multipart/form-data"
+        src: "/tmp/ntp_output.csv"
+        status_code: 201
