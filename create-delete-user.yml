@@ -1,0 +1,38 @@
+---
+
+-name: create user
+gather_facts : no
+connection: httpapi
+var:
+change_id: 121321321
+
+
+tasks:
+- name: list the current users
+check_point.gaia.cp_gaia_user_facts:
+register: list_of_users_before
+
+
+- name: reading users from csv file
+community.general.read_csv:
+path: "{{ 'usernames.csv' }}"
+register: new_usernames
+delegate_to: localhost
+
+- name: adding new users
+check_point.gaia.cp_gaia_user:
+name: {{ new_usernames.name }}
+homedir: {{ new_usernames.homedir }}
+roles: {{ new_usernames.roles }}
+password: {{ new_usernames.password }}
+real_name: {{new_usernames.real_name }}
+must_change_password: true
+
+- name: list the new users list
+check_point.gaia.cp_gaia_user_facts:
+register: list_of_users_after
+
+- name: Show diff between two pre snapshot and post snapshot
+ansible.utils.fact_diff:
+before: "{{ list_of_users_before }}"
+after: "{{ list_of_users_after }}"
