@@ -1,0 +1,166 @@
+---
+- name: Produce FW System Summary
+  hosts: testfw1
+  gather_facts: no
+  connection: local
+  vars:
+    gaia_api_ver: ""
+    playbook_dir: "."
+
+  tasks:
+    - name: Make sure output CSV does not exist
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/summary.csv"
+        state: absent
+      run_once: yes
+      ignore_errors: yes
+
+    - name: Create output CSV
+      ansible.builtin.lineinfile:
+        dest: "{{ playbook_dir }}/summary.csv"
+        create: yes
+        line: "inventory_hostname,hostname,os_build,os_edition,os_kernel_version,product_version,cluster_state"
+        state: present
+      run_once: yes
+ 
+    - name: Login to checkpoint api
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/{{ gaia_api_ver }}login"
+        method: POST
+        force_basic_auth: true
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+        validate_certs: no
+        timeout: 60
+      register: login_response
+      delegate_to: localhost
+
+    - name: Login Response
+      ansible.builtin.debug:
+        msg: "{{ login_response }}"
+
+
+    - name: Get hostname
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-hostname"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_hostname_response
+      delegate_to: localhost
+
+    - name: Hostname Response
+      ansible.builtin.debug:
+        msg: "{{ show_hostname_response }}"
+
+
+    - name: Get Asset Details
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-asset"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_asset_response
+      delegate_to: localhost
+
+    - name: Asset Details Response
+      ansible.builtin.debug:
+        msg: "{{ show_asset_response }}"
+
+
+    - name: Get Clock
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-time-and-date"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_timedate_response
+      delegate_to: localhost
+
+    - name: Clock Response
+      ansible.builtin.debug:
+        msg: "{{ show_timedate_response }}"
+
+
+    - name: Get Cluster State
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-cluster-state"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_cluster_response
+      delegate_to: localhost
+
+    - name: Cluster State Response
+      ansible.builtin.debug:
+        msg: "{{ show_cluster_response }}"
+
+
+    - name: Get Licenses
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-licenses"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_licenses_response
+      delegate_to: localhost
+
+    - name: Show Licenses Response
+      ansible.builtin.debug:
+        msg: "{{ show_licenses_response }}"
+
+
+    - name: Show Version
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/show-version"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid  }}"
+        body_format: json
+        body: "{}"
+        validate_certs: no
+        timeout: 60
+      register: show_version_response
+      delegate_to: localhost
+
+    - name: Show Version Response
+      ansible.builtin.debug:
+        msg: "{{ show_version_response }}"
+
+
+    - name: Write output record to CSV file
+      ansible.builtin.lineinfile:
+        dest: "{{ playbook_dir }}/summary.csv"
+        line: "{{ inventory_hostname }},{{ show_hostname_response.json.name }},{{ show_version_response.json['os-build'] }},{{ show_version_response.json['os-edition'] }},{{ show_version_response.json['os-kernel-version'] }},{{ show_version_response.json['product-version'] }},{{ show_cluster_response.json.message  }}"
+        state: present
