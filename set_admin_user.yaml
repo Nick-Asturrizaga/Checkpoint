@@ -1,0 +1,161 @@
+---
+- name: SET USER and Send Results CHECKPOINT
+  hosts: all
+  gather_facts: no
+  connection: local
+
+  tasks:
+    - name: Login to Checkpoint API
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/login"
+        method: POST
+        force_basic_auth: true
+        headers:
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          session-timeout: 1800
+        validate_certs: no
+        timeout: 60
+      register: login_response
+      delegate_to: localhost
+      no_log: True
+
+    - name: DEBUG RESPONSE
+      ansible.builtin.debug:
+        msg: "{{ login_response }}"
+
+    - name: Get USER PRE-CHANGE Servers
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/v1.7/show-users"
+        method: POST
+        body_format: json
+        body: {}
+        timeout: 60
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid }}"
+        validate_certs: no
+      register: user_pre_response
+      delegate_to: localhost
+
+    - name: Parse user intake
+      ansible.builtin.set_fact:
+        users_pre_change: "{{ user_pre_response.json | check_point_to_parse_users.json }}"
+
+    - name: Add header entry to file - CSV
+      lineinfile:
+        dest: "{{ playbook_dir }}/user_pre_change_audit.csv"
+        line: "hostname,u_name,u_real_name,u_home,allow_x,roles,u_shell"
+        create: yes
+        state: present
+      run_once: True
+      delegate_to: localhost
+
+    - name: Add entry to file - CSV
+      lineinfile:
+        dest: "{{ playbook_dir }}/user_pre_change_audit.csv"
+        line: "{{ inventory_hostname }},{{ item.name }},{{ item.real_name }},{{ item.home }},{{ item.allow_x }},{{ item.roles }},{{ item.shell }}"
+        create: yes
+        state: present
+      loop: "{{ users_pre_change }}"
+      throttle: 1
+      delegate_to: localhost
+
+    - name: SEND SUCCESS RESULTS EMAIL with PRE CHANGE OUTPUT
+      community.general.mail:
+        host: 
+        port: 25
+        to: "{{ email_to }}"
+        from: ""
+        subject: CHECKPOINT USERS PRE CHANGE
+        body: |
+          Please see attached file
+        attach: "{{ playbook_dir }}/user_pre_change_audit.csv"
+      run_once: True
+      delegate_to: localhost
+
+    - name: CREATE USER Servers
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/v1.7/add-user"
+        method: POST
+        body_format: json
+        body: "{{ intake }}"
+        timeout: 60
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid }}"
+        validate_certs: no
+      vars:
+        intake:
+          {
+            "allow-access-using": [
+              "CLI",
+              "Web UI"
+            ],
+            "homedir": "/home/{{ item.uid }}",
+            "uid": 0,
+            "name": "{{ item.uid }}",
+            "real-name": "{{ item.user_real_name }}",
+            "roles": [
+              "adminRole"
+            ],
+            "shell": "bash"
+          }
+      loop: "{{ users }}"
+      register: user_update_response
+      delegate_to: localhost
+      ignore_errors: True
+
+    - name: Get USER POST-CHANGE Servers
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/gaia_api/v1.7/show-users"
+        method: POST
+        body_format: json
+        body: {}
+        timeout: 60
+        headers:
+          Content-Type: "application/json"
+          X-chkp-sid: "{{ login_response.json.sid }}"
+        validate_certs: no
+      register: user_post_response
+      delegate_to: localhost
+
+    - name: Parse user intake
+      ansible.builtin.set_fact:
+        users_post_change: "{{ user_post_response.json | check_point_to_parse_users.json }}"
+
+    - name: Add header entry to file - CSV
+      lineinfile:
+        dest: "{{ playbook_dir }}/user_post_change_audit.csv"
+        line: "hostname,u_name,u_real_name,u_home,allow_x,roles,u_shell"
+        create: yes
+        state: present
+      run_once: True
+      delegate_to: localhost
+
+    - name: Add entry to file - CSV
+      lineinfile:
+        dest: "{{ playbook_dir }}/user_post_change_audit.csv"
+        line: "{{ inventory_hostname }},{{ item.name }},{{ item.real_name }},{{ item.home }},{{ item.allow_x }},{{ item.roles }},{{ item.shell }}"
+        create: yes
+        state: present
+      loop: "{{ users_post_change }}"
+      throttle: 1
+      delegate_to: localhost
+
+    - name: SEND SUCCESS RESULTS EMAIL with POST CHANGE OUTPUT
+      community.general.mail:
+        host: 
+        port: 25
+        to: "{{ email_to }}"
+        from: ""
+        subject: CHECKPOINT USER SRV POST CHANGE
+        body: |
+          Please see attached file
+        attach: "{{ playbook_dir }}/user_post_change_audit.csv"
+      run_once: True
+      delegate_to: localhost
